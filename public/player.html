@@ -295,9 +295,9 @@ function show(id) {
 }
 
 // Handle Enter key on join form
+const joinScreen = document.getElementById('screen-join');
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.getElementById('screen-join') &&
-      !document.getElementById('screen-join').classList.contains('hidden')) {
+  if (e.key === 'Enter' && joinScreen && !joinScreen.classList.contains('hidden')) {
     joinGame();
   }
 });

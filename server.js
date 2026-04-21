@@ -8,9 +8,29 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
+const GAME_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_GAMES_PER_MINUTE = 20; // rate-limit game creation
 
+app.set('trust proxy', 1); // honour X-Forwarded-* headers from reverse proxies
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// ── Simple in-memory rate limiter for game creation ───────────────────────────
+const createGameRequests = new Map(); // ip -> { count, resetAt }
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = createGameRequests.get(ip);
+  if (!entry || now > entry.resetAt) {
+    createGameRequests.set(ip, { count: 1, resetAt: now + 60_000 });
+    return next();
+  }
+  entry.count++;
+  if (entry.count > MAX_GAMES_PER_MINUTE) {
+    return res.status(429).json({ error: 'Too many games created. Please wait a minute.' });
+  }
+  next();
+}
 
 // ── In-memory game store ──────────────────────────────────────────────────────
 const games = {}; // pin -> gameState
@@ -103,7 +123,7 @@ app.get('/join/:pin', (_req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'player.html'))
 );
 
-app.post('/api/create-game', async (req, res) => {
+app.post('/api/create-game', rateLimit, async (req, res) => {
   const pin = generatePin();
   const questions =
     Array.isArray(req.body.questions) && req.body.questions.length > 0
@@ -289,8 +309,8 @@ function endGame(pin) {
   if (!game) return;
   game.state = 'ended';
   io.to(`game:${pin}`).emit('game:ended', { leaderboard: getLeaderboard(game) });
-  // Clean up after 30 min
-  setTimeout(() => delete games[pin], 30 * 60 * 1000);
+  // Clean up after 30 minutes
+  setTimeout(() => delete games[pin], GAME_CLEANUP_TIMEOUT_MS);
 }
 
 server.listen(PORT, () => {
