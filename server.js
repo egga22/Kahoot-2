@@ -9,25 +9,26 @@ const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const GAME_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_GAMES_PER_MINUTE = 20; // rate-limit game creation
 
-app.set('trust proxy', 1); // honour X-Forwarded-* headers from reverse proxies
+app.set('trust proxy', 1); // honor X-Forwarded-* headers from reverse proxies
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// ── Simple in-memory rate limiter for game creation ───────────────────────────
-const createGameRequests = new Map(); // ip -> { count, resetAt }
+// ── Simple in-memory rate limiter ────────────────────────────────────────────
+const requestCounts = new Map(); // ip -> { count, resetAt }
+const MAX_REQUESTS_PER_MINUTE = 60;
+
 function rateLimit(req, res, next) {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
-  const entry = createGameRequests.get(ip);
+  const entry = requestCounts.get(ip);
   if (!entry || now > entry.resetAt) {
-    createGameRequests.set(ip, { count: 1, resetAt: now + 60_000 });
+    requestCounts.set(ip, { count: 1, resetAt: now + 60_000 });
     return next();
   }
   entry.count++;
-  if (entry.count > MAX_GAMES_PER_MINUTE) {
-    return res.status(429).json({ error: 'Too many games created. Please wait a minute.' });
+  if (entry.count > MAX_REQUESTS_PER_MINUTE) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a minute.' });
   }
   next();
 }
@@ -119,7 +120,7 @@ function getLeaderboard(game) {
 }
 
 // ── HTTP routes ───────────────────────────────────────────────────────────────
-app.get('/join/:pin', (_req, res) =>
+app.get('/join/:pin', rateLimit, (_req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'player.html'))
 );
 
