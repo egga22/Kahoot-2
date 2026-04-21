@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Host – Kahoot-2</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Setup screen ── */
+    .questions-editor { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+    .q-row {
+      background: rgba(255,255,255,.1);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .q-row-num { font-weight: 800; font-size: 1.1rem; min-width: 24px; padding-top: 2px; }
+    .q-row-body { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; color: rgba(255,255,255,.85); }
+    .q-row-body strong { color: #fff; font-size: 1rem; }
+    .remove-btn { background: none; border: none; cursor: pointer; color: rgba(255,255,255,.5); font-size: 1.2rem; padding: 0 4px; }
+    .remove-btn:hover { color: #e21b3c; }
+
+    .add-q-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: rgba(255,255,255,.07);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .options-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .option-wrap { display: flex; align-items: center; gap: 8px; }
+    .option-wrap label { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+    .correct-select { width: 100%; padding: 10px; border-radius: 8px; background: rgba(255,255,255,.1); color: #fff; border: 2px solid rgba(255,255,255,.2); font-size: .95rem; }
+    .correct-select option { background: #2d0d6b; }
+
+    /* ── Lobby screen ── */
+    .lobby-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    .lobby-right { display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── Question screen ── */
+    .question-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 12px;
+    }
+    .host-answers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+    .host-answer-opt {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .host-answer-opt[data-idx="0"] { background: var(--red); }
+    .host-answer-opt[data-idx="1"] { background: var(--blue); }
+    .host-answer-opt[data-idx="2"] { background: var(--yellow); color: #1a0050; }
+    .host-answer-opt[data-idx="3"] { background: var(--green); }
+    .host-answer-opt .shape { width: 32px; height: 32px; border-radius: 50%; background: rgba(0,0,0,.2); display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .host-answer-opt.correct-opt { outline: 4px solid #fff; }
+
+    @media (max-width: 560px) {
+      .lobby-grid { grid-template-columns: 1fr; justify-items: center; }
+      .host-answers { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page" id="app">
+
+  <!-- ══ SETUP SCREEN ══════════════════════════════════════════════════════ -->
+  <div id="screen-setup" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:20px;">
+    <div class="center">
+      <a href="index.html" style="text-decoration:none"><div class="brand" style="font-size:2rem">Kahoot<span>-2</span></div></a>
+      <p class="muted" style="margin-top:4px">Set up your quiz</p>
+    </div>
+
+    <div class="card" style="max-width:640px">
+      <h2 style="margin-bottom:16px">📝 Questions</h2>
+
+      <div class="questions-editor" id="questions-list">
+        <!-- populated by JS -->
+      </div>
+
+      <details style="margin-top:20px">
+        <summary style="cursor:pointer;color:#ffd700;font-weight:700;font-size:.95rem;list-style:none;display:flex;align-items:center;gap:6px;">
+          <span id="toggle-icon">▶</span> Add a custom question
+        </summary>
+        <div class="add-q-form" style="margin-top:14px" id="add-q-form">
+          <input type="text" id="q-text" placeholder="Question text" />
+          <div class="options-row">
+            <input type="text" id="opt-0" placeholder="Option A" />
+            <input type="text" id="opt-1" placeholder="Option B" />
+            <input type="text" id="opt-2" placeholder="Option C" />
+            <input type="text" id="opt-3" placeholder="Option D" />
+          </div>
+          <select class="correct-select" id="correct-idx">
+            <option value="0">Correct answer: A</option>
+            <option value="1">Correct answer: B</option>
+            <option value="2">Correct answer: C</option>
+            <option value="3">Correct answer: D</option>
+          </select>
+          <button class="btn btn-outline" onclick="addQuestion()">➕ Add Question</button>
+        </div>
+      </details>
+    </div>
+
+    <button class="btn btn-primary btn-lg" onclick="createGame()" id="create-btn">🚀 Create Game</button>
+    <p class="muted" id="setup-error" style="color:#ff6b6b"></p>
+  </div>
+
+  <!-- ══ LOBBY SCREEN ══════════════════════════════════════════════════════ -->
+  <div id="screen-lobby" class="hidden" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:20px;">
+    <div class="center">
+      <div class="brand" style="font-size:2rem">Kahoot<span>-2</span></div>
+      <p class="muted" style="margin-top:4px">Waiting for players…</p>
+    </div>
+
+    <div class="card" style="max-width:680px">
+      <div class="lobby-grid">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <div class="qr-wrapper">
+            <img id="qr-img" src="" alt="QR Code" />
+          </div>
+          <p class="muted" style="font-size:.75rem;text-align:center">Scan to join</p>
+          <div class="pin-box" id="pin-display">------</div>
+          <p class="join-url" id="join-url-display"></p>
+        </div>
+        <div class="lobby-right">
+          <div>
+            <h3 style="margin-bottom:10px;">Players (<span id="player-count">0</span>)</h3>
+            <div class="player-list" id="player-list">
+              <span class="muted" style="font-size:.9rem">No players yet…</span>
+            </div>
+          </div>
+          <button class="btn btn-success btn-lg btn-full" id="start-btn" onclick="startGame()" disabled>
+            ▶ Start Game
+          </button>
+          <p class="muted" style="font-size:.8rem">Players need to join first</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ QUESTION SCREEN ═══════════════════════════════════════════════════ -->
+  <div id="screen-question" class="hidden" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:16px;">
+
+    <div class="question-header">
+      <span class="q-counter" id="q-counter">Question 1 / 8</span>
+      <div class="timer-ring" id="timer-ring">
+        <svg width="70" height="70" viewBox="0 0 70 70">
+          <circle class="bg" cx="35" cy="35" r="30" fill="none" stroke-width="6"/>
+          <circle class="fg" id="timer-arc" cx="35" cy="35" r="30" fill="none" stroke-width="6"
+            stroke-linecap="round"
+            stroke-dasharray="188.5"
+            stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-value" id="timer-value">20</div>
+      </div>
+      <div class="answer-count" id="answer-count">0 / 0 answered</div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="timer-progress" style="width:100%"></div>
+    </div>
+
+    <div class="question-box" id="q-text-display">Question text here</div>
+
+    <div class="host-answers" id="host-answers"></div>
+  </div>
+
+  <!-- ══ ANSWER REVIEW SCREEN ══════════════════════════════════════════════ -->
+  <div id="screen-review" class="hidden" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:20px;">
+    <h2 class="center">📊 Results</h2>
+    <div class="leaderboard" id="review-leaderboard"></div>
+    <button class="btn btn-primary btn-lg" id="next-btn" onclick="nextQuestion()">Next Question ›</button>
+  </div>
+
+  <!-- ══ GAME OVER SCREEN ══════════════════════════════════════════════════ -->
+  <div id="screen-gameover" class="hidden" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:20px;">
+    <div class="center">
+      <div style="font-size:4rem">🏆</div>
+      <h1>Game Over!</h1>
+    </div>
+    <h2>Final Leaderboard</h2>
+    <div class="leaderboard" id="final-leaderboard"></div>
+    <a href="host.html" class="btn btn-primary btn-lg">🔄 Play Again</a>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const SHAPES = ['▲','◆','●','★'];
+const LABELS = ['A','B','C','D'];
+
+// ── Default questions (mirrors server defaults) ───────────────────────────────
+let questions = [
+  { text:'What is the capital of France?',        options:['London','Paris','Berlin','Madrid'],          correct:1, time:20 },
+  { text:'What is 7 × 8?',                        options:['54','56','58','62'],                          correct:1, time:20 },
+  { text:'Which planet is closest to the Sun?',   options:['Venus','Earth','Mercury','Mars'],             correct:2, time:20 },
+  { text:'What is the largest ocean on Earth?',   options:['Atlantic','Indian','Arctic','Pacific'],       correct:3, time:20 },
+  { text:"Who wrote 'Romeo and Juliet'?",         options:['Dickens','Shakespeare','Tolstoy','Homer'],   correct:1, time:20 },
+  { text:'How many sides does a hexagon have?',   options:['5','6','7','8'],                             correct:1, time:20 },
+  { text:'What is the chemical symbol for Gold?', options:['Go','Gd','Au','Ag'],                        correct:2, time:20 },
+  { text:'What year did World War II end?',       options:['1943','1944','1945','1946'],                  correct:2, time:20 },
+  { text:'What is the speed of light (approx)?',  options:['300 km/s','3,000 km/s','300,000 km/s','3,000,000 km/s'], correct:2, time:20 },
+  { text:'Which element has the atomic number 1?',options:['Helium','Oxygen','Carbon','Hydrogen'],        correct:3, time:20 },
+];
+
+let pin = null;
+let socket = null;
+let timerInterval = null;
+let currentTime = 20;
+let totalTime = 20;
+
+// ── Render question list in setup ─────────────────────────────────────────────
+function renderQuestionList() {
+  const el = document.getElementById('questions-list');
+  if (questions.length === 0) {
+    el.innerHTML = '<p class="muted" style="text-align:center">No questions yet. Add some below!</p>';
+    return;
+  }
+  el.innerHTML = questions.map((q, i) => `
+    <div class="q-row">
+      <div class="q-row-num">${i + 1}.</div>
+      <div class="q-row-body">
+        <strong>${q.text}</strong>
+        <span>${q.options.map((o, idx) => `<b style="color:${idx===q.correct?'#7fff7f':'rgba(255,255,255,.7)'}">${LABELS[idx]}: ${o}</b>`).join(' · ')}</span>
+      </div>
+      <button class="remove-btn" onclick="removeQuestion(${i})" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeQuestion(i) {
+  questions.splice(i, 1);
+  renderQuestionList();
+}
+
+function addQuestion() {
+  const text = document.getElementById('q-text').value.trim();
+  const opts = [0,1,2,3].map(i => document.getElementById(`opt-${i}`).value.trim());
+  const correct = parseInt(document.getElementById('correct-idx').value);
+  if (!text || opts.some(o => !o)) {
+    alert('Please fill in the question and all four options.');
+    return;
+  }
+  questions.push({ text, options: opts, correct, time: 20 });
+  renderQuestionList();
+  document.getElementById('q-text').value = '';
+  [0,1,2,3].forEach(i => document.getElementById(`opt-${i}`).value = '');
+}
+
+// ── Create game ───────────────────────────────────────────────────────────────
+async function createGame() {
+  if (questions.length === 0) {
+    document.getElementById('setup-error').textContent = 'Add at least one question first.';
+    return;
+  }
+  document.getElementById('create-btn').disabled = true;
+  document.getElementById('create-btn').textContent = 'Creating…';
+
+  try {
+    const res = await fetch('/api/create-game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questions }),
+    });
+    const data = await res.json();
+    pin = data.pin;
+
+    document.getElementById('qr-img').src = data.qrCode;
+    document.getElementById('pin-display').textContent = data.pin;
+    document.getElementById('join-url-display').textContent = data.joinUrl;
+
+    show('screen-lobby');
+    connectSocket();
+  } catch (e) {
+    document.getElementById('setup-error').textContent = 'Failed to create game. Try again.';
+    document.getElementById('create-btn').disabled = false;
+    document.getElementById('create-btn').textContent = '🚀 Create Game';
+  }
+}
+
+// ── Socket ────────────────────────────────────────────────────────────────────
+function connectSocket() {
+  socket = io();
+  socket.emit('host:register', { pin });
+
+  socket.on('host:state', (data) => {
+    updatePlayerList(data.players);
+  });
+
+  socket.on('player:list', ({ players }) => {
+    updatePlayerList(players);
+    document.getElementById('start-btn').disabled = players.length === 0;
+    document.getElementById('start-btn').nextElementSibling.textContent =
+      players.length === 0 ? 'Players need to join first' : `${players.length} player(s) ready`;
+  });
+
+  socket.on('host:answer-count', ({ answered, total }) => {
+    document.getElementById('answer-count').textContent = `${answered} / ${total} answered`;
+  });
+
+  socket.on('question:show', (q) => {
+    clearTimerUI();
+    show('screen-question');
+    document.getElementById('q-counter').textContent = `Question ${q.index + 1} / ${q.total}`;
+    document.getElementById('q-text-display').textContent = q.text;
+    document.getElementById('answer-count').textContent = `0 / ? answered`;
+
+    const grid = document.getElementById('host-answers');
+    grid.innerHTML = q.options.map((opt, i) => `
+      <div class="host-answer-opt" data-idx="${i}" id="host-opt-${i}">
+        <div class="shape">${SHAPES[i]}</div>
+        <span>${opt}</span>
+      </div>
+    `).join('');
+
+    startTimerUI(q.time);
+    totalTime = q.time;
+  });
+
+  socket.on('question:ended', ({ correctAnswer, leaderboard, isLastQuestion }) => {
+    clearTimerUI();
+
+    // Highlight correct answer
+    document.querySelectorAll('.host-answer-opt').forEach((el, i) => {
+      el.classList.toggle('correct-opt', i === correctAnswer);
+    });
+
+    setTimeout(() => {
+      renderLeaderboard('review-leaderboard', leaderboard, '🎉');
+      document.getElementById('next-btn').textContent =
+        isLastQuestion ? '🏆 Show Final Results' : 'Next Question ›';
+      show('screen-review');
+    }, 1800);
+  });
+
+  socket.on('game:ended', ({ leaderboard }) => {
+    renderLeaderboard('final-leaderboard', leaderboard, '🏆');
+    show('screen-gameover');
+  });
+}
+
+function startGame() {
+  if (!socket || !pin) return;
+  socket.emit('host:start', { pin });
+}
+
+function nextQuestion() {
+  if (!socket || !pin) return;
+  socket.emit('host:next', { pin });
+}
+
+// ── Timer UI ──────────────────────────────────────────────────────────────────
+function startTimerUI(seconds) {
+  currentTime = seconds;
+  const arc = document.getElementById('timer-arc');
+  const full = 188.5;
+  document.getElementById('timer-value').textContent = seconds;
+  arc.style.strokeDashoffset = 0;
+
+  timerInterval = setInterval(() => {
+    currentTime--;
+    if (currentTime < 0) currentTime = 0;
+    document.getElementById('timer-value').textContent = currentTime;
+    const pct = currentTime / seconds;
+    arc.style.strokeDashoffset = full * (1 - pct);
+    document.getElementById('timer-progress').style.width = (pct * 100) + '%';
+    if (currentTime === 0) clearTimerUI();
+  }, 1000);
+}
+
+function clearTimerUI() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function show(screenId) {
+  ['screen-setup','screen-lobby','screen-question','screen-review','screen-gameover']
+    .forEach(id => document.getElementById(id).classList.toggle('hidden', id !== screenId));
+}
+
+function updatePlayerList(players) {
+  const el = document.getElementById('player-list');
+  const cnt = document.getElementById('player-count');
+  cnt.textContent = players.length;
+  if (players.length === 0) {
+    el.innerHTML = '<span class="muted" style="font-size:.9rem">No players yet…</span>';
+  } else {
+    el.innerHTML = players.map(p => `<div class="player-chip">${p.name}</div>`).join('');
+  }
+}
+
+function renderLeaderboard(containerId, players, medal) {
+  const medals = ['🥇','🥈','🥉'];
+  const el = document.getElementById(containerId);
+  el.innerHTML = players.length === 0
+    ? '<p class="muted center">No players scored.</p>'
+    : players.map((p, i) => `
+      <div class="leaderboard-row" style="animation-delay:${i * 80}ms">
+        <span class="lb-rank">${medals[i] || (i + 1)}</span>
+        <span class="lb-name">${p.name}</span>
+        <span class="lb-score">${p.score.toLocaleString()} pts</span>
+      </div>
+    `).join('');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+renderQuestionList();
+</script>
+</body>
+</html>

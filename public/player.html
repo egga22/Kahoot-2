@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Play – Kahoot-2</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .screen { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+
+    /* Join form */
+    .join-form { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 400px; }
+
+    /* Lobby waiting animation */
+    .waiting-dots span {
+      display: inline-block;
+      animation: blink 1.2s infinite;
+      color: #ffd700;
+      font-size: 2rem;
+    }
+    .waiting-dots span:nth-child(2) { animation-delay: .2s; }
+    .waiting-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%,80%,100% { opacity: 0; } 40% { opacity: 1; } }
+
+    /* Question timer on player */
+    .player-timer {
+      font-size: 2rem;
+      font-weight: 900;
+      color: #ffd700;
+      min-width: 48px;
+      text-align: center;
+    }
+    .player-timer.urgent { color: #e21b3c; animation: pulse .5s infinite; }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+
+    /* Result card */
+    .result-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 28px 20px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      width: 100%;
+      max-width: 400px;
+    }
+  </style>
+</head>
+<body>
+<div class="page" id="app">
+
+  <!-- ══ JOIN SCREEN ═══════════════════════════════════════════════════════ -->
+  <div id="screen-join" class="screen">
+    <div class="center">
+      <a href="index.html" style="text-decoration:none"><div class="brand" style="font-size:2rem">Kahoot<span>-2</span></div></a>
+      <p class="muted" style="margin-top:4px">Enter your name and the game PIN</p>
+    </div>
+
+    <div class="card join-form">
+      <input type="text" id="player-name" placeholder="Your name" maxlength="20" autocomplete="off" />
+      <input type="text" id="game-pin" placeholder="Game PIN" maxlength="6" pattern="\d{6}"
+             inputmode="numeric" autocomplete="off" />
+      <button class="btn btn-primary btn-full btn-lg" onclick="joinGame()">Join Game 🎮</button>
+      <p id="join-error" style="color:#ff6b6b;text-align:center;font-size:.9rem;min-height:1.2em"></p>
+    </div>
+  </div>
+
+  <!-- ══ LOBBY SCREEN ══════════════════════════════════════════════════════ -->
+  <div id="screen-lobby" class="screen hidden">
+    <div class="center" style="margin-top:40px;">
+      <div style="font-size:3.5rem">🎮</div>
+      <h2 id="lobby-name" style="margin:12px 0 4px">Hello, Player!</h2>
+      <p class="muted">You're in the game. Waiting for the host to start…</p>
+      <div class="waiting-dots" style="margin-top:20px;letter-spacing:4px;">
+        <span>●</span><span>●</span><span>●</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ QUESTION SCREEN ═══════════════════════════════════════════════════ -->
+  <div id="screen-question" class="screen hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;">
+      <span class="q-counter" id="q-counter">Q 1/8</span>
+      <div class="player-timer" id="player-timer">20</div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="player-progress" style="width:100%"></div>
+    </div>
+
+    <div class="question-box" id="player-question">Question goes here</div>
+
+    <div class="answers-grid" id="player-answers"></div>
+  </div>
+
+  <!-- ══ WAITING AFTER ANSWER ══════════════════════════════════════════════ -->
+  <div id="screen-answered" class="screen hidden">
+    <div class="result-card">
+      <div class="result-icon" id="answer-icon">✅</div>
+      <h2 id="answer-label" style="margin:12px 0 4px">Correct!</h2>
+      <div class="points-earned" id="points-earned">+850 pts</div>
+      <p class="muted" style="margin-top:8px">Waiting for others…</p>
+      <p style="margin-top:12px;font-size:.9rem;color:rgba(255,255,255,.7)">Total: <strong id="total-score">850 pts</strong></p>
+    </div>
+  </div>
+
+  <!-- ══ REVIEW / LEADERBOARD SCREEN ══════════════════════════════════════ -->
+  <div id="screen-review" class="screen hidden">
+    <div class="center">
+      <div style="font-size:2.5rem" id="review-icon">📊</div>
+      <h2 style="margin-top:8px">Leaderboard</h2>
+    </div>
+    <div class="leaderboard" id="review-leaderboard" style="max-width:480px;width:100%;"></div>
+    <p class="muted">Waiting for next question…</p>
+  </div>
+
+  <!-- ══ GAME OVER SCREEN ══════════════════════════════════════════════════ -->
+  <div id="screen-gameover" class="screen hidden">
+    <div class="center">
+      <div style="font-size:4rem">🏆</div>
+      <h1>Game Over!</h1>
+      <p class="muted" style="margin-top:4px">Final Results</p>
+    </div>
+    <div class="leaderboard" id="final-leaderboard" style="max-width:480px;width:100%;"></div>
+    <a href="player.html" class="btn btn-primary btn-lg">Play Again 🔄</a>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const SHAPES = ['▲','◆','●','★'];
+const LABELS = ['A','B','C','D'];
+
+let socket = null;
+let pin = null;
+let timerInterval = null;
+let currentTime = 20;
+let answered = false;
+
+// ── Pre-fill PIN from URL (/join/:pin) ────────────────────────────────────────
+(function () {
+  const match = location.pathname.match(/\/join\/(\d{6})/);
+  if (match) document.getElementById('game-pin').value = match[1];
+})();
+
+// ── Join ──────────────────────────────────────────────────────────────────────
+function joinGame() {
+  const name = document.getElementById('player-name').value.trim();
+  const pinVal = document.getElementById('game-pin').value.trim();
+  const err = document.getElementById('join-error');
+  err.textContent = '';
+
+  if (!name) { err.textContent = 'Please enter your name.'; return; }
+  if (!/^\d{6}$/.test(pinVal)) { err.textContent = 'PIN must be exactly 6 digits.'; return; }
+
+  pin = pinVal;
+  connectSocket(name, pinVal);
+}
+
+function connectSocket(name, pinVal) {
+  socket = io();
+
+  socket.on('connect', () => {
+    socket.emit('player:join', { pin: pinVal, name });
+  });
+
+  socket.on('join:error', ({ message }) => {
+    document.getElementById('join-error').textContent = message;
+    socket.disconnect();
+    socket = null;
+  });
+
+  socket.on('player:joined', ({ name: joinedName }) => {
+    document.getElementById('lobby-name').textContent = `Hello, ${joinedName}! 👋`;
+    show('screen-lobby');
+  });
+
+  socket.on('question:show', (q) => {
+    answered = false;
+    clearTimerUI();
+    show('screen-question');
+
+    document.getElementById('q-counter').textContent = `Q ${q.index + 1} / ${q.total}`;
+    document.getElementById('player-question').textContent = q.text;
+
+    const grid = document.getElementById('player-answers');
+    grid.innerHTML = q.options.map((opt, i) => `
+      <button class="answer-btn" data-idx="${i}" onclick="submitAnswer(${i})">
+        <span class="shape">${SHAPES[i]}</span>
+        <span>${opt}</span>
+      </button>
+    `).join('');
+
+    startTimerUI(q.time);
+  });
+
+  socket.on('player:answer-result', ({ correct, points, correctAnswer, totalScore }) => {
+    clearTimerUI();
+    document.getElementById('answer-icon').textContent = correct ? '✅' : '❌';
+    document.getElementById('answer-label').textContent = correct ? 'Correct!' : 'Wrong!';
+    document.getElementById('points-earned').textContent = correct ? `+${points.toLocaleString()} pts` : 'No points';
+    document.getElementById('total-score').textContent = `${totalScore.toLocaleString()} pts`;
+    show('screen-answered');
+  });
+
+  socket.on('question:ended', ({ correctAnswer, leaderboard }) => {
+    clearTimerUI();
+
+    // If player never answered (time ran out), show the correct answer briefly
+    if (!answered) {
+      highlightCorrect(correctAnswer);
+      setTimeout(() => showReview(leaderboard), 1500);
+    } else {
+      showReview(leaderboard);
+    }
+  });
+
+  socket.on('game:ended', ({ leaderboard }) => {
+    clearTimerUI();
+    renderLeaderboard('final-leaderboard', leaderboard);
+    show('screen-gameover');
+  });
+
+  socket.on('disconnect', () => {
+    // Silently ignore unless still on join screen
+  });
+}
+
+function submitAnswer(idx) {
+  if (answered) return;
+  answered = true;
+  // Disable all buttons
+  document.querySelectorAll('.answer-btn').forEach(b => b.disabled = true);
+  socket.emit('player:answer', { answer: idx });
+}
+
+function highlightCorrect(correctAnswer) {
+  show('screen-question');
+  document.querySelectorAll('.answer-btn').forEach((btn, i) => {
+    btn.disabled = true;
+    btn.classList.toggle('correct', i === correctAnswer);
+    btn.classList.toggle('wrong', i !== correctAnswer);
+  });
+}
+
+function showReview(leaderboard) {
+  renderLeaderboard('review-leaderboard', leaderboard);
+  show('screen-review');
+}
+
+// ── Timer UI ──────────────────────────────────────────────────────────────────
+function startTimerUI(seconds) {
+  currentTime = seconds;
+  const el = document.getElementById('player-timer');
+  const prog = document.getElementById('player-progress');
+
+  el.textContent = seconds;
+  el.classList.remove('urgent');
+  prog.style.width = '100%';
+
+  timerInterval = setInterval(() => {
+    currentTime--;
+    if (currentTime < 0) currentTime = 0;
+    el.textContent = currentTime;
+    prog.style.width = ((currentTime / seconds) * 100) + '%';
+    el.classList.toggle('urgent', currentTime <= 5);
+    if (currentTime === 0) clearTimerUI();
+  }, 1000);
+}
+
+function clearTimerUI() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+// ── Leaderboard renderer ──────────────────────────────────────────────────────
+function renderLeaderboard(containerId, players) {
+  const medals = ['🥇','🥈','🥉'];
+  const el = document.getElementById(containerId);
+  el.innerHTML = players.length === 0
+    ? '<p class="muted center">No scores yet.</p>'
+    : players.map((p, i) => `
+      <div class="leaderboard-row" style="animation-delay:${i * 80}ms">
+        <span class="lb-rank">${medals[i] || (i + 1)}</span>
+        <span class="lb-name">${p.name}</span>
+        <span class="lb-score">${p.score.toLocaleString()} pts</span>
+      </div>
+    `).join('');
+}
+
+// ── Screen helper ─────────────────────────────────────────────────────────────
+function show(id) {
+  ['screen-join','screen-lobby','screen-question','screen-answered','screen-review','screen-gameover']
+    .forEach(sid => document.getElementById(sid).classList.toggle('hidden', sid !== id));
+}
+
+// Handle Enter key on join form
+const joinScreen = document.getElementById('screen-join');
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && joinScreen && !joinScreen.classList.contains('hidden')) {
+    joinGame();
+  }
+});
+</script>
+</body>
+</html>
