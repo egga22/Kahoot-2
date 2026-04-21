@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kahoot-2</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .landing {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      min-height: 90vh;
+      text-align: center;
+    }
+    .tagline { color: rgba(255,255,255,.75); font-size: 1.1rem; }
+    .btn-row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  </style>
+</head>
+<body>
+  <div class="landing">
+    <div>
+      <div class="brand">Kahoot<span>-2</span></div>
+      <p class="tagline">A fun multiplayer quiz game — play from your phone!</p>
+    </div>
+
+    <div class="btn-row">
+      <a href="host.html" class="btn btn-primary btn-lg">🎮 Host a Game</a>
+      <a href="player.html" class="btn btn-outline btn-lg">📱 Join a Game</a>
+    </div>
+
+    <p class="muted">Host on a big screen · Players scan the QR code from their phones</p>
+  </div>
+</body>
+</html>
